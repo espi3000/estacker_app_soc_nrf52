@@ -1,0 +1,13 @@
+# Copyright (c) 2024 Nordic Semiconductor ASA
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_EH_IOT_EVAL_2
+
+config BOARD
+	default "eh_iot_eval_2"
+
+config BT_CTLR
+   default BT
+
+
+endif
