@@ -32,6 +32,8 @@ uint16_t sample_packets_counter;     // Number of sample packets. A sample packe
 
 uint16_t test_data;         // Send test_data if sensor type is 0
 
+static bool tof_sample_ready;
+
 
 // Steps for EH OC sampling:
 // Init ADC + Set ADC GPO1 High
@@ -41,7 +43,7 @@ uint16_t test_data;         // Send test_data if sensor type is 0
 
 
 // Configure IO Directions of I/O expander responsible for sensor power & interrupts
-int io_expander_init(void){
+int io_expander_init(void) {
     int ret = 0;
     if (!device_is_ready(dev_i2c_ioexp.bus)) {
         printf("Device %s is not ready\n", dev_i2c_ioexp.bus->name);
@@ -64,6 +66,12 @@ int io_expander_init(void){
     return ret;
 }
 
+int io_expander_clear_interrupt(void) {
+    uint8_t input_port_0_reg = 0x00;
+    uint8_t input_reg_data[2];
+    return i2c_write_read_dt(&dev_i2c_ioexp, &input_port_0_reg, 1, &input_reg_data, 2);    
+}
+
 int i2c_switch_init(void) {
     int ret = 0;
     if (!device_is_ready(dev_i2c_i2cswitch.bus)) {
@@ -76,96 +84,21 @@ int i2c_switch_init(void) {
     return ret;
 }
 
-int IOExp_Int_Handling(void) {
-    int ret = 0;    // Return
-    // if interrupt detected, read input registers to clear pin
-    if (gpio_pin_get_dt(&IOExp_INTn) == 0) {
-        int err;
-        uint8_t input_reg_add = 0x00;
-        uint8_t input_reg_data[2];
 
-        err = i2c_write_read_dt(&dev_i2c_ioexp, &input_reg_add, 1, &input_reg_data, 2); 
-        
-        uint16_t input_states = ((uint16_t)input_reg_data[1] << 8) | input_reg_data[0];  
-
-        printk("Handler detected interrupt. States: %i\n", input_states);
-
-        if ((input_states >> 13) & 1) {  // IMU Interrupt
-            k_msleep(50);    // Debounce
-            // Read interrupt register to clear all interrupt flags
-            uint8_t config[2];
-            config[0] = 0x3B; // Register
-            config[1] = 0x00; // Data
-            err = i2c_write_read_dt(&dev_i2c_imu, config, 1, &config[1], 1); 
-
-            k_msleep(50);   // Wait for IMU interrupt output to clear
-
-            ret = 2;       // IMU has triggered the interrupt
-
-        } else if (((input_states >> 4) & 1) & (((input_states >> 6) & 1)==0)) { // TOF Interrupt (TOF sensor on & active low interrupt == low)
-            printk("Detected TOF interrupt\n");
-
-            uint16_t dev = 0x0000;      // TOF device dummy
-            //VL53L1X_StopRanging(dev);
-            VL53L1X_ClearInterrupt(dev);
-
-            k_msleep(50);   // Wait for TOF interrupt output to clear
-            ret = 8;       // TOF has triggered the interrupt
-
-        } else {
-            ret = 1;           // Other interrupt has triggered
-        }
-
-        // Reset I/O Expander interrupt
-        err = i2c_write_read_dt(&dev_i2c_ioexp, &input_reg_add, 1, &input_reg_data, 2); 
-         
-
-    } else {
-        ret = 0;           // No interrupt triggered
-    }
-
-    return ret;
-    
+void tof_irq_handler(void) {
+    // Clear tof interrupt
+    tof_clear_interrupt();
+    // Clear IO expander interrupt
+    io_expander_clear_interrupt();
+    // Set flags
+    tof_sample_ready = true;
 }
 
-int Switch_SensI2C(const uint16_t sensor_mask, enum i2c_state state) {
-    int ret = 0;
-    uint8_t config = 0x00;
-
-    //                       TMP   IMU   PMS   TOF   BIO   GPS   COL   BPS   AIR
-    uint8_t i2c_on_lut[]  = {0x04, 0x10, 0x08, 0x02, 0x01, 0x20, 0x80, 0x40, 0x20};
-    uint8_t i2c_off_lut[] = {0xFB, 0xEF, 0xF7, 0xFD, 0xFE, 0xDF, 0x7F, 0xBF, 0xDF};
-    size_t lut_size = sizeof(i2c_on_lut)/sizeof(i2c_on_lut[0]);
-    uint8_t *lut;
-
-    if (state == I2C_ON)
-        lut = i2c_on_lut;
-    else
-        lut = i2c_off_lut;
-
-    ret += i2c_read_dt(&dev_i2c_i2cswitch, &config, sizeof(config));
-
-    // Enable/disable I2C for selected sensors
-    for (int i = 0; i < lut_size; i++) {
-        if (sensor_mask & (1 << i)) {
-            config = config | lut[i];
-        }
-    }
-
-    ret += i2c_write_dt(&dev_i2c_i2cswitch, &config, sizeof(config));
-
-    if (ret != 0) {
-        printk("Failed to write to I2C device address %x. \n\r", dev_i2c_i2cswitch.addr);
-        return 1;
-    }
-    if (state == I2C_ON) {
-        // Wait until sensor have booted up
-        k_msleep(50);
-    }
-    return 0;
+int tof_sample_ready(void) {
+    return tof_sample_ready;
 }
 
-int tof_enable_i2c(void) {
+int tof_i2c_enable(void) {
     int ret = 0;
     uint8_t config;
     ret += i2c_read_dt(&dev_i2c_i2cswitch, &config, sizeof(config));
@@ -174,7 +107,7 @@ int tof_enable_i2c(void) {
     return ret;
 }
 
-int tof_disable_i2c(void) {
+int tof_i2c_disable(void) {
     int ret = 0;
     uint8_t config;
     ret += i2c_read_dt(&dev_i2c_i2cswitch, &config, sizeof(config));
@@ -183,7 +116,7 @@ int tof_disable_i2c(void) {
     return ret;
 }
 
-int tof_enable_power(void) {
+int tof_power_on(void) {
     int ret = 0;
     uint8_t output_reg_add = 0x02;
     uint16_t output_reg_data;
@@ -192,10 +125,11 @@ int tof_enable_power(void) {
     uint8_t config[3] = {0x02, output_reg_data, output_reg_data >> 8}; // Set IO Directions (output reg, port 0, port 1)
     ret += i2c_write_dt(&dev_i2c_ioexp, config, sizeof(config));
     k_msleep(250); // Wait for sensors to boot up
+    // Clear interrupts
     return ret;
 }
 
-int tof_disable_power(void) {
+int tof_power_off(void) {
     int ret = 0;
     uint8_t output_reg_add = 0x02;
     uint16_t output_reg_data;
@@ -206,54 +140,13 @@ int tof_disable_power(void) {
     return ret;
 }
 
-int power_sensors(uint16_t sensor_mask, enum power_state state) {
-    int ret;
-    uint16_t output_reg_data;
-    uint8_t output_reg_add = 0x02;
-
-    //                          TMP     IMU     PMS     TOF     BIO     GPS     MIC     COL     BPS     AIR
-    uint16_t power_on_lut[]  = {0x0200, 0x1000, 0x0080, 0x0030, 0x0003, 0x4000, 0x0800, 0x0008, 0x0004, 0x4000};
-    uint16_t power_off_lut[] = {0xFDFF, 0xEFFF, 0xFF7F, 0xFFCF, 0xFFFC, 0xBFFF, 0xF7FF, 0xFFF7, 0xFFFB, 0xBFFF};
-    size_t lut_size = sizeof(power_on_lut)/sizeof(power_on_lut[0]);
-    uint16_t *lut;
-
-    if (state == POWER_ON)
-        lut = power_on_lut;
-    else
-        lut = power_off_lut;
-
-    ret += i2c_write_read_dt(&dev_i2c_ioexp, &output_reg_add, 1, &output_reg_data, 2); 
-
-    // Enable/disable power for selected sensors
-    for (int i = 0; i < lut_size; i++) {
-        if (sensor_mask & (1 << i)) {
-            output_reg_data = output_reg_data & lut[i];
-        }
-    }
-
-    if (state == POWER_OFF) {
-        // Wait for I2C communications in progress to finish
-        k_msleep(100);
-    }
-    
-    uint8_t config[3] = {0x02, output_reg_data, output_reg_data >> 8}; // Set IO Directions (output reg, port 0, port 1)
-    ret += i2c_write_dt(&dev_i2c_ioexp, config, sizeof(config));
-    if (ret != 0) {
-            printk("Failed to write to I2C device address %x. \n\r", dev_i2c_ioexp.addr);
-            return 1;
-    }
-    if (state == POWER_ON) {
-        // Wait and clear IO expander interrupts triggered by sensor power-on
-        k_msleep(5);
-        IOExp_Int_Handling();
-        // Wait until sensors have booted up
-        k_msleep(250);
-    }
-    return 0;
+int tof_clear_interrupt(void) {
+    uint16_t dev = 0x0000;
+    return VL53L1X_ClearInterrupt(dev);
 }
 
 int tof_init(void) {
-    printk("TOF Init Start\n");
+    tof_sample_ready = false;
 
     int ret = 0;
     uint16_t dev = 0x0000;
@@ -261,17 +154,12 @@ int tof_init(void) {
     /* Wait for device booted */
     uint8_t state = 0;
     while(state == 0) {
-            ret = VL53L1X_BootState(dev, &state);
-            k_msleep(2);
+        ret = VL53L1X_BootState(dev, &state);
+        k_msleep(2);
     }
 
     // Initialize sensor to default values
     ret = ret + VL53L1X_SensorInit(dev);
-
-    if(ret != 0) {
-        printk("Failed to write to I2C device address %x. \n\r", dev_i2c_tof.addr);
-        return 1;
-    }
 
     VL53L1X_SetDistanceMode(dev, TOF.distance_mode);        // Short distance mode
     VL53L1X_SetInterMeasurementInMs(dev, TOF.intermeas_ms); // Interval between ranging operations (2000 ms)
@@ -289,20 +177,6 @@ int tof_init(void) {
     } else {
         VL53L1X_SetTimingBudgetInMs(dev, TOF.timing_budget_ms); // Minimum timing budget for all distances (200 ms)
     }
-    //if (SOC.processing==99){
-    //    VL53L1X_SetDistanceMode(dev, 1);                        // Short distance mode
-    //    VL53L1X_SetInterMeasurementInMs(dev, 2000);             // Interval between ranging operations (2000 ms)
-    //    VL53L1X_SetTimingBudgetInMs(dev, 20);                   // Minimum timing budget for all distances (33 ms)
-    //    VL53L1X_SetInterruptPolarity(dev, 0);                   // Interrupt active low
-    //    VL53L1X_SetDistanceThreshold(dev, 150, 1000, 0, 0);     // Trigger interrupt if object closer than 300 mm detected
-    //    VL53L1X_StartRanging(dev);                              // Starts continuous ranging
-    //    VL53L1X_ClearInterrupt(dev);
-    //} else {
-    //    VL53L1X_SetDistanceMode(dev, 2);                        // Long distance mode
-    //    VL53L1X_SetTimingBudgetInMs(dev, 200);                  // Minimum timing budget for all distances (200 ms)
-    //}
-
-    printk("TOF Init End\n");
 
     return 0;
 
