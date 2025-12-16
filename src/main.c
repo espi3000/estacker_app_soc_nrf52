@@ -17,7 +17,7 @@
 #include "main.h"
 #include "gpios.h"
 #include "uart.h"
-#include "sensors.h"
+#include "tof.h"
 #include "bluetooth.h"
 
 //*******************************************************************************
@@ -129,6 +129,8 @@ int main(void) {
 
     // Timer for sampling period
     k_timer_start(&FSM_timer, K_SECONDS(0), K_MSEC(SOC.sample_time_ms));
+
+    // Configure gpio interrupt:
 
     pm_device_action_run(cons, PM_DEVICE_ACTION_SUSPEND);
 
