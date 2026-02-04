@@ -54,6 +54,6 @@ void bt_receive(struct bt_conn *conn, const uint8_t *data);
 
 void bt_advertise(int err);
 
-int communicate_samples(uint16_t *samples, size_t num_samples);
+int communicate_samples(struct ring_buf *ringbuf);
 
 #endif // _BLUETOOTH_H_

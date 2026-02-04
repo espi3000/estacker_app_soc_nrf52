@@ -124,7 +124,6 @@ UART_RX_RDY_json_undo:
 //******************************************************************************
 
 static void uart_callback(const struct device *dev, struct uart_event *evt, void *user_data) {
-    int status = 0;
 	switch (evt->type) {
     case UART_RX_RDY:
         if ((evt->data.rx.buf[0] == '{') && !params_received) {

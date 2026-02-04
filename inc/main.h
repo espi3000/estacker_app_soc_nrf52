@@ -10,20 +10,7 @@
 //extern uint16_t Sensor_Type;          // MSB -> LSB: 0, MIC, GPS, BIO, TOF, PMS, IMU, TMP
 //extern uint8_t Processing;      // Post-processing to be performed on the samples
 
-
-enum states{
-    OFF = 1000,                // Reserved for when DC/DC converter is off
-    BOOTING = 0,            // Reserved for when the DC/DC converter has turned on but nRF has not reached the IDLE state yet
-    SLEEP = 1,              // Unused
-    IDLE = 2,
-    SAMPLING = 3,
-    PROCESSING = 4,
-    COMMUNICATING = 5,
-    BACKUP = 6,             // Backup & Restore
-    ALWAYS_ON_IDLE = 99,    // Internal state; not reflected in state register
-};
-
-extern enum states state;   // SoC State
+//extern const struct gpio_dt_spec shutdown;              // Shutdown signal from external voltage supervisor
 
 struct Benchmark_params {
     uint32_t sample_time_ms;    // time period between samples (equals 1/fs)
@@ -45,6 +32,6 @@ struct TOF_params {
 
 extern struct Benchmark_params SOC;
 extern struct TOF_params TOF;
-
+extern uint64_t g_tof_tot_num_samples;
 
 #endif // _MAIN_H_

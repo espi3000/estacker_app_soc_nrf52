@@ -2,24 +2,9 @@
 #ifndef _TOF_H_
 #define _TOF_H_
 
+#include <zephyr/kernel.h>
 #include <zephyr/drivers/i2c.h> // I2C
-
-//******************************************************************************
-//* Macros
-//******************************************************************************
-
-#define I2C0_IOExp DT_NODELABEL(ioexpander)
-#define I2C0_I2CSwitch DT_NODELABEL(i2cswitch)
-#define I2C0_TOF DT_NODELABEL(tof)
-#define I2C0_GeneralCall DT_NODELABEL(generalcall)
-
-//******************************************************************************
-//* Global variables
-//******************************************************************************
-
-extern uint16_t sample_data[512];           // Sample data buffer
-extern uint16_t sample_data_counter;        // Sample data counter
-extern uint16_t sample_packets_counter;     // Number of sample packets. A sample packet can consist of the measurements of several sensors
+#include <zephyr/sys/ring_buffer.h>
 
 //******************************************************************************
 //* Types
@@ -40,48 +25,90 @@ enum power_state {
 //******************************************************************************
 
 /**
- * @brief Initialize I/O expander
+ * @brief Initialize the Time-of-Flight sensor
  * 
- * @return int 
+ * Powers on the sensor, enables I2C communication, and configures the sensor
+ * for interrupt-driven distance measurements based on predefined parameters.
+ * 
+ * @retval 0 on success
+ * @retval non-zero on failure
  */
-int io_expander_init(void);
+int tof_init(void);
 
 /**
- * @brief I/O expander interrupt handler
+ * @brief Powers on the Time-of-Flight sensor
  * 
- * @return int 
  */
-int io_expander_irq_handler(void);
+void tof_power_on(void);
 
 /**
- * @brief Initialize sensor board
+ * @brief Powers off the Time-of-Flight sensor
  * 
- * @return int 
  */
-int sensor_board_init(void);
+void tof_power_off(void);
 
 /**
- * @brief Power on/off specific sensors
+ * @brief Enables I2C communication with the Time-of-Flight sensor
  * 
- * @param sensor_mask The type of sensor to power on/off
- * @param state 1 to power on, 0 to power off
- * @return int 
  */
-int power_sensors(uint16_t sensor_mask, enum power_state state);
+void tof_i2c_enable(void);
 
 /**
- * @brief Sample data from a specific sensor
+ * @brief Disables I2C communication with the Time-of-Flight sensor
  * 
- * @param sensor_mask The type of sensor to sample
- * @return int 
  */
-int sensor_sample(uint16_t sensor_mask);
+void tof_i2c_disable(void);
 
 /**
- * @brief Process the sampled data
+ * @brief Clears the interrupt on the Time-of-Flight sensor
  * 
- * @return int 
+ * @retval 0 on success
+ * @retval non-zero on failure
  */
-int process_samples(void);
+int tof_clear_interrupt(void);
+
+/**
+ * @brief Starts continuous distance sampling on the Time-of-Flight sensor
+ * 
+ * @retval 0 on success
+ * @retval non-zero on failure
+ */
+int tof_start_sampling(void);
+
+/**
+ * @brief Stops continuous distance sampling on the Time-of-Flight sensor
+ * 
+ * @retval 0 on success
+ * @retval non-zero on failure
+ */
+int tof_stop_sampling(void);
+
+/**
+ * @brief Retrieves a distance sample from the Time-of-Flight sensor and stores 
+ * it in the provided ring buffer
+ * 
+ * @param ringbuf Pointer to the ring buffer where the sample will be stored
+ * @retval 0 on success
+ * @retval non-zero on failure
+ */
+int tof_get_sample(struct ring_buf *ringbuf);
+
+/**
+ * @brief Gets the number of samples currently stored in the ring buffer
+ * 
+ * @param ringbuf Pointer to the ring buffer
+ * @return Number of samples in the ring buffer
+ */
+int tof_get_num_samples(struct ring_buf *ringbuf);
+
+/**
+ * @brief Gets the total number of samples taken since initialization
+ * 
+ * @return Total number of samples taken
+ */
+uint64_t tof_get_tot_num_samples(void);
+
+//int tof_sample_oneshot(void);
+//int process_samples(void);
 
 #endif // _TOF_H_

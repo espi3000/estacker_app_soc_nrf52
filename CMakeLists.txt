@@ -15,7 +15,11 @@ target_sources(app PRIVATE src/main.c)
 target_sources(app PRIVATE src/tof.c)
 target_sources(app PRIVATE src/bluetooth.c)
 target_sources(app PRIVATE src/gpios.c)
+target_sources(app PRIVATE src/state_logger.c)
+target_sources(app PRIVATE src/io_expander.c)
+target_sources(app PRIVATE src/i2c_switch.c)
 target_sources(app PRIVATE src/uart.c)
+target_sources(app PRIVATE src/backup.c)
 target_sources(app PRIVATE src/vl53l1_platform.c) # ToF sensor
 target_sources(app PRIVATE src/VL53L1X_api.c) # ToF sensor
 

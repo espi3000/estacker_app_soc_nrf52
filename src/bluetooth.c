@@ -1,4 +1,5 @@
 #include <zephyr/settings/settings.h>
+#include <zephyr/sys/ring_buffer.h>
 
 #include "bluetooth.h"
 
@@ -204,8 +205,7 @@ void bt_transmit(struct bt_conn *conn, const uint8_t *data, size_t len) {
     }
 }
 
-
-int communicate_samples(uint16_t *samples, size_t num_samples) {
+int communicate_samples(struct ring_buf *ringbuf) {
     k_timer_start(&BT_Off_timer, K_SECONDS(3), K_SECONDS(3));
     BT_REQ_disconnect = 0;
     bt_advertise(0);
@@ -223,13 +223,15 @@ int communicate_samples(uint16_t *samples, size_t num_samples) {
     printk("Connection established!\n");
     k_sleep(K_SECONDS(2));
 
-    size_t len = num_samples*sizeof(uint16_t);
-    size_t num_packets = DIV_ROUND_UP(len, BT_GAP_ADV_MAX_ADV_DATA_LEN);
+    uint8_t *data_ptr;
+    size_t num_bytes = ring_buf_get_claim(ringbuf, &data_ptr, ring_buf_capacity_get(ringbuf));
+    size_t num_packets = DIV_ROUND_UP(num_bytes, BT_GAP_ADV_MAX_ADV_DATA_LEN);
     for (size_t packet_idx = 0; packet_idx < num_packets; packet_idx++) {
         size_t offset = packet_idx*BT_GAP_ADV_MAX_ADV_DATA_LEN;
-        size_t chunk_len = MIN(BT_GAP_ADV_MAX_ADV_DATA_LEN, len - offset);
-        bt_transmit(BT_connection, (uint8_t*)&samples[offset], chunk_len);
+        size_t chunk_len = MIN(BT_GAP_ADV_MAX_ADV_DATA_LEN, num_bytes - offset);
+        bt_transmit(BT_connection, &data_ptr[offset], chunk_len);
     }
+    ring_buf_get_finish(ringbuf, num_bytes);
     
     printk("Notified\n");	
     while (BT_REQ_disconnect == 0) {

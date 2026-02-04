@@ -35,21 +35,19 @@
 
 
 #include "vl53l1_platform.h"
-#include "sensors.h"
 #include <string.h>
 #include <time.h>
 #include <math.h>
 
 extern const struct i2c_dt_spec dev_i2c_tof;
 
-
 int8_t VL53L1_WriteMulti(uint16_t dev, uint16_t index, uint8_t *pdata, uint32_t count) {
 	uint32_t num_bytes = count*4 +2;
 	uint8_t buf[num_bytes];
 	buf[0] = index >> 8;
 	buf[1] = index;
-	buf[2] = pdata;
-	if (i2c_write_dt(&dev_i2c_tof, &buf, num_bytes)){
+	buf[2] = pdata; //! I think this is wrong
+	if (i2c_write_dt(&dev_i2c_tof, (const uint8_t*)&buf, num_bytes)){
 		return 1;
 	}
 	
@@ -70,7 +68,7 @@ int8_t VL53L1_WrByte(uint16_t dev, uint16_t index, uint8_t data) {
 	buf[0] = index >> 8;
 	buf[1] = index;
 	buf[2] = data;
-	if (i2c_write_dt(&dev_i2c_tof, &buf, 3)){
+	if (i2c_write_dt(&dev_i2c_tof, (const uint8_t*)&buf, 3)){
 		return 1;
 	}
 	return 0; // to be implemented
@@ -82,8 +80,7 @@ int8_t VL53L1_WrWord(uint16_t dev, uint16_t index, uint16_t data) {
 	buf[1] = index;
 	buf[2] = data >> 8;
 	buf[3] = data;
-
-	if (i2c_write_dt(&dev_i2c_tof, &buf, 4)) {
+	if (i2c_write_dt(&dev_i2c_tof, (const uint8_t*)&buf, 4)) {
 		return 1;
 	}
 	return 0; // to be implemented
@@ -97,7 +94,7 @@ int8_t VL53L1_WrDWord(uint16_t dev, uint16_t index, uint32_t data) {
 	buf[3] = data >> 16;
 	buf[4] = data >> 8;
 	buf[5] = data;
-	if (i2c_write_dt(&dev_i2c_tof, &buf, 6)){
+	if (i2c_write_dt(&dev_i2c_tof, (const uint8_t*)&buf, 6)){
 		return 1;
 	}
 	return 0; // to be implemented
